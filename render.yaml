@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: git-thrift
+    runtime: static
+    buildCommand: echo "no build step"
+    staticPublishPath: ./public
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
