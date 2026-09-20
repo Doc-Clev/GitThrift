@@ -1,0 +1,2 @@
+# GitThrift
+Thrift Assistant
