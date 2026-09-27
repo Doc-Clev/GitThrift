@@ -3,41 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Git-thrift</title>
-<meta name="theme-color" content="#1e1b15">
+<title>Thrift Me</title>
+<meta name="theme-color" content="#f7c9d9">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Git-thrift">
+<meta name="apple-mobile-web-app-title" content="Thrift Me">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Lobster&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --paper:#efe4c6; --card:#f8f1dc; --ink:#1e1b15; --soft:#6b6350; --line:#cdbf97;
-  --red:#c4351d; --green:#2d6a3e; --amber:#a8690a; --hole:#efe4c6;
+  --paper:#f7c9d9; --card:#fdeaf1; --ink:#2b1520; --soft:#7a4a5c; --line:#e39ab5;
+  --red:#b8236b; --green:#2d6a3e; --amber:#a8690a; --hole:#f7c9d9;
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
-  --paper:#1a1712; --card:#262118; --ink:#f1e7cc; --soft:#a89c7f; --line:#453c2a;
-  --red:#ee6a4f; --green:#6fbf85; --amber:#e0a84a; --hole:#1a1712; } }
+  --paper:#2a141d; --card:#3a1f2b; --ink:#fbe4ee; --soft:#c98fa6; --line:#6e3a50;
+  --red:#ff7ab5; --green:#6fbf85; --amber:#e0a84a; --hole:#2a141d; } }
 :root[data-theme="dark"]{
-  --paper:#1a1712; --card:#262118; --ink:#f1e7cc; --soft:#a89c7f; --line:#453c2a;
-  --red:#ee6a4f; --green:#6fbf85; --amber:#e0a84a; --hole:#1a1712; }
+  --paper:#2a141d; --card:#3a1f2b; --ink:#fbe4ee; --soft:#c98fa6; --line:#6e3a50;
+  --red:#ff7ab5; --green:#6fbf85; --amber:#e0a84a; --hole:#2a141d; }
 *,*::before,*::after{box-sizing:inherit}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 html,body{height:100%}
 body{margin:0;background:var(--paper);color:var(--ink);
-  font:400 16px/1.45 "Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif}
+  font:400 16px/1.45 "Lora",Georgia,"Times New Roman",serif}
 .mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
 main{max-width:640px;margin:0 auto;padding:12px 16px 40px}
 header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:16px}
-h1{font-weight:800;font-size:34px;line-height:.95;letter-spacing:-.03em;margin:0}
+h1{font-family:"Lobster",cursive;font-weight:400;font-size:38px;line-height:1;letter-spacing:0;margin:0}
 h1 em{font-style:normal;color:var(--red)}
+h1{color:var(--red)} h1 em{color:var(--ink)}
 .sync{font-size:11px;color:var(--soft);text-transform:uppercase;letter-spacing:.08em}
-h2{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--soft);margin:22px 0 8px;font-weight:600}
+h2{font-family:"Lobster",cursive;font-size:20px;text-transform:none;letter-spacing:0;color:var(--red);margin:22px 0 8px;font-weight:400}
 p.hint{color:var(--soft);font-size:14px;margin:6px 0 12px}
+nav button{font-family:"Lora",Georgia,serif;font-weight:600}
 
 /* the tag: clipped corners + punched hole */
 .tag{position:relative;background:var(--card);border:1.5px solid var(--ink);
@@ -52,7 +54,7 @@ input[type=text],input[type=number],textarea,select{width:100%;font:inherit;colo
 textarea{resize:vertical;min-height:70px;border:1.5px dashed var(--line);padding:8px}
 input:focus,textarea:focus,select:focus{border-color:var(--red)}
 select{appearance:none}
-button{font:600 15px/1 "Bricolage Grotesque",system-ui,sans-serif;color:var(--ink);background:transparent;
+button{font:600 15px/1 "Lora",Georgia,serif;color:var(--ink);background:transparent;
   border:1.5px solid var(--ink);padding:12px 16px;cursor:pointer;border-radius:0}
 button.go{background:var(--ink);color:var(--paper);width:100%;padding:15px}
 button.sm{padding:7px 10px;font-size:13px}
@@ -92,13 +94,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .pulled input{width:22px;height:22px;accent-color:var(--green)}
 .review{border-top:1.5px dashed var(--line);margin-top:12px;padding-top:4px}
 .find .nums{display:flex;gap:14px;flex-wrap:wrap;margin:6px 0;font-family:"IBM Plex Mono",monospace;font-weight:600}
-.find .nums small{display:block;font:400 10px/1.2 "Bricolage Grotesque",sans-serif;text-transform:uppercase;letter-spacing:.08em;color:var(--soft)}
+.find .nums small{display:block;font:400 10px/1.2 "Lora",Georgia,serif;text-transform:uppercase;letter-spacing:.08em;color:var(--soft)}
 .bar{height:6px;border:1.5px solid var(--ink);margin-top:10px}.bar i{display:block;height:100%;width:0;background:var(--red);transition:width .3s}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{display:inline-flex;gap:6px;align-items:center;border:1.5px solid var(--line);padding:7px 9px;margin:0;text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink);cursor:pointer}
 .chip input{accent-color:var(--red);width:16px;height:16px}
 .site{border-top:1.5px dashed var(--line);margin-top:16px;padding-top:4px}
-.site h3{margin:10px 0 2px;font-size:18px;font-weight:800;letter-spacing:-.01em}
+.site h3{font-family:"Lobster",cursive;margin:10px 0 2px;font-size:22px;font-weight:400;letter-spacing:0}
 .site .ex{font-size:14px;margin:2px 0}.site .ex b{font-weight:600}
 details{border-top:1.5px dashed var(--line);padding:10px 0}details:first-of-type{border-top:0}
 summary{font-weight:600;cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:10px}summary::after{content:"+";color:var(--red);font-weight:800}details[open] summary::after{content:"–"}
@@ -129,7 +131,7 @@ nav button[aria-current=true]{opacity:1;box-shadow:inset 0 -3px 0 var(--red)}
   <button data-v="info" aria-label="About and FAQ">?</button>
 </nav>
 <main>
-  <header><h1>Git<em>-</em>thrift</h1><span class="sync" id="sync">starting…</span></header>
+  <header><h1>Thrift<em> </em>Me</h1><span class="sync" id="sync">starting…</span></header>
 
   <!-- SETUP / AUTH -->
   <section id="v-auth">
@@ -238,7 +240,7 @@ nav button[aria-current=true]{opacity:1;box-shadow:inset 0 -3px 0 var(--red)}
   <!-- INFO / FAQ -->
   <section id="v-info" hidden>
     <div class="tag pad">
-      <p style="margin-top:0"><b>Git-thrift</b> is a family resale tool. Scout thrift racks and shelves from video or a photo, write listings, format them per site, draft buyer replies, and track what you paid and what it sold for.</p>
+      <p style="margin-top:0"><b>Thrift Me</b> is a family resale tool. Scout thrift racks and shelves from video or a photo, write listings, format them per site, draft buyer replies, and track what you paid and what it sold for.</p>
       <p class="hint" style="margin-bottom:0">Prices are AI estimates from general knowledge, not live sold listings. Check eBay sold comps before spending real money on anything pricey.</p>
     </div>
     <h2>FAQ</h2>
