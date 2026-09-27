@@ -31,7 +31,7 @@ html,body{height:100%}
 body{margin:0;background:var(--paper);color:var(--ink);
   font:400 16px/1.45 "Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif}
 .mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
-main{max-width:640px;margin:0 auto;padding:18px 16px 110px}
+main{max-width:640px;margin:0 auto;padding:12px 16px 40px}
 header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:16px}
 h1{font-weight:800;font-size:34px;line-height:.95;letter-spacing:-.03em;margin:0}
 h1 em{font-style:normal;color:var(--red)}
@@ -108,15 +108,21 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .warn{border:1.5px solid var(--red);color:var(--red);padding:10px 12px;margin:10px 0;font-size:14px}
 .note{color:var(--soft);font-size:14px;margin-top:10px;min-height:1.2em}
 
-nav{position:fixed;left:0;right:0;bottom:0;background:var(--ink);display:flex;
-  padding-bottom:env(safe-area-inset-bottom,0px)}
-nav button{flex:1;border:0;color:var(--paper);opacity:.55;padding:16px 2px;font-size:13px}
-nav button[aria-current=true]{opacity:1;box-shadow:inset 0 3px 0 var(--red)}
+nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--ink);display:flex}
+nav button{flex:1;border:0;color:var(--paper);opacity:.55;padding:14px 2px;font-size:13px}
+nav button[aria-current=true]{opacity:1;box-shadow:inset 0 -3px 0 var(--red)}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:no-preference){ .tag{animation:in .25s ease-out} @keyframes in{from{opacity:0;transform:translateY(6px)}} }
 </style>
 </head>
 <body>
+<nav aria-label="Sections" id="nav" hidden>
+  <button data-v="scout">Scout</button>
+  <button data-v="new" aria-current="true">＋ List</button>
+  <button data-v="items">Items</button>
+  <button data-v="reply">Replies</button>
+  <button data-v="set" aria-label="Settings">⚙︎</button>
+</nav>
 <main>
   <header><h1>Git<em>-</em>thrift</h1><span class="sync" id="sync">starting…</span></header>
 
@@ -138,7 +144,11 @@ nav button[aria-current=true]{opacity:1;box-shadow:inset 0 3px 0 var(--red)}
     <p class="hint">Photograph one item for a buy/pass call, or film a rack or aisle and let the agent flag what's worth pulling.</p>
     <div class="tag pad">
       <label for="sMode">What are you doing</label>
-      <select id="sMode"><option value="quick" selected>One item — photograph it now</option><option value="rack">Clothing rack video — flag garments to pull</option><option value="shelf">Shelf video — price what's visible</option></select>
+      <div class="chips" id="sMode" role="radiogroup" aria-label="What are you doing">
+        <label class="chip"><input type="radio" name="sMode" value="quick" checked> One item — photograph it</label>
+        <label class="chip"><input type="radio" name="sMode" value="rack"> Clothing rack video</label>
+        <label class="chip"><input type="radio" name="sMode" value="shelf"> Shelf video</label>
+      </div>
       <p class="hint" id="sTip" style="margin:6px 0 0"></p>
       <div id="quickBox">
         <label class="drop" for="qPhotos" style="margin-top:12px">📷 Take photos of the item<small id="qName">label or model number, the whole item, any flaws · up to 5</small></label>
@@ -240,13 +250,6 @@ nav button[aria-current=true]{opacity:1;box-shadow:inset 0 3px 0 var(--red)}
   </section>
 </main>
 
-<nav aria-label="Sections" id="nav" hidden>
-  <button data-v="scout">Scout</button>
-  <button data-v="new" aria-current="true">＋ List</button>
-  <button data-v="items">Items</button>
-  <button data-v="reply">Replies</button>
-  <button data-v="set" aria-label="Settings">⚙︎</button>
-</nav>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
@@ -491,9 +494,25 @@ function showDraft(it, isNew) {
   const pa = h("input", { type: "number", inputmode: "numeric", value: it.price_ask, "aria-label": "Asking price" });
   const pf = h("input", { type: "number", inputmode: "numeric", value: it.price_floor, "aria-label": "Floor price" });
   const pq = h("input", { type: "number", inputmode: "numeric", value: it.price_quick, "aria-label": "Quick-sale price" });
+  const paid = h("input", { type: "number", inputmode: "decimal", value: it.paid ?? "", "aria-label": "Purchase price" });
+  const soldFor = h("input", { type: "number", inputmode: "decimal", value: it.sold_for ?? "", "aria-label": "Sold for" });
+  const marginOut = h("div", { class: "nums", style: "margin-top:8px" });
+  const calcMargin = () => {
+    const p = paid.value === "" ? null : Number(paid.value), sf = soldFor.value === "" ? null : Number(soldFor.value);
+    marginOut.replaceChildren();
+    if (sf == null) { marginOut.append(h("span", { class: "hint", style: "font-family:inherit;font-weight:400", text: p == null ? "" : "Enter what it sold for to see the margin." })); return; }
+    const cost = p || 0, profit = sf - cost, margin = sf > 0 ? profit / sf * 100 : 0, roi = cost > 0 ? profit / cost * 100 : null;
+    marginOut.append(
+      h("div", { style: profit < 0 ? "color:var(--red)" : "color:var(--green)" }, h("small", { text: "Profit" }), money(Math.round(profit))),
+      h("div", {}, h("small", { text: "Margin" }), `${margin.toFixed(0)}%`),
+      roi == null ? null : h("div", {}, h("small", { text: "Return on cost" }), `${roi.toFixed(0)}%`));
+    if (sf && status.value !== "sold") { status.value = "sold"; }
+  };
+  paid.addEventListener("input", calcMargin); soldFor.addEventListener("input", calcMargin);
   const status = h("select", { "aria-label": "Status" }, ["scouted", "draft", "listed", "pending", "sold"].map(s => h("option", { text: s, selected: s === it.status })));
   const read = () => Object.assign(it, { title: title.value.trim(), category: cat.value.trim(), condition: cond.value, description: desc.value.trim(),
-    price_ask: pa.value === "" ? "" : Number(pa.value), price_floor: pf.value === "" ? "" : Number(pf.value), price_quick: pq.value === "" ? "" : Number(pq.value), status: status.value });
+    price_ask: pa.value === "" ? "" : Number(pa.value), price_floor: pf.value === "" ? "" : Number(pf.value), price_quick: pq.value === "" ? "" : Number(pq.value), status: status.value,
+    paid: paid.value === "" ? "" : Number(paid.value), sold_for: soldFor.value === "" ? "" : Number(soldFor.value) });
 
   const card = h("div", { class: "tag pad" },
     it.identified_as ? h("p", { class: "hint", text: `Identified as: ${it.identified_as}` + (it.id_confidence ? ` (${it.id_confidence} confidence)` : "") }) : null,
@@ -508,6 +527,12 @@ function showDraft(it, isNew) {
     f("Category", cat), f("Condition", cond), f("Description", desc),
     it.tags.length ? [h("label", { text: "Search tags" }), h("p", { class: "mono", style: "margin:0;font-size:13px", text: it.tags.join(", ") })] : null,
     it.checks.length ? [h("label", { text: "Before you post" }), h("ul", { style: "margin:0;padding-left:18px;font-size:14px" }, it.checks.map(c => h("li", { text: c })))] : null,
+    h("label", { text: "Money" }),
+    h("div", { class: "prices" },
+      h("div", {}, h("span", { text: "Paid" }), paid),
+      h("div", { class: "ask" }, h("span", { text: "Sold for" }), soldFor),
+      h("div", {}, h("span", { text: "Added" }), h("span", { class: "mono", style: "display:block;font-size:14px;padding:6px 0;font-weight:600", text: it.created ? new Date(it.created).toLocaleDateString() : "—" }))),
+    marginOut,
     f("Status", status),
     h("div", { class: "row end" },
       h("button", { class: "sm", text: "Copy title", onclick: e => copy(title.value, e.target) }),
@@ -523,6 +548,7 @@ function showDraft(it, isNew) {
         if (isNew) { $("draft").replaceChildren(); $("notes").value = ""; $("thumbs").replaceChildren(); $("photos").value = ""; files = []; thumb = ""; go("items"); }
         else renderList();
       } })));
+  calcMargin();
   host.replaceChildren(card); card.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -532,12 +558,14 @@ function renderList() {
   const scouted = items.filter(i => i.status === "scouted"), live = items.filter(i => i.status !== "sold" && i.status !== "scouted"), sold = items.filter(i => i.status === "sold");
   $("tally").textContent = items.length
     ? `${live.length} open · asking ${money(live.reduce((s, i) => s + (Number(i.price_ask) || 0), 0))} · sold ${sold.length}` + (scouted.length ? ` · ${scouted.length} scouted` : "")
+      + (sold.some(i => i.sold_for !== "" && i.sold_for != null) ? ` · profit ${money(Math.round(sold.reduce((s, i) => s + ((Number(i.sold_for) || 0) - (Number(i.paid) || 0)), 0)))}` : "")
     : "Nothing here yet. Add your first item from the New tab.";
   for (const it of [...live, ...scouted, ...sold]) list.append(h("div", { class: "tag pad item", tabindex: 0, role: "button", onclick: () => showDraft(it, false),
       onkeydown: e => { if (e.key === "Enter") showDraft(it, false); } },
     it.thumb ? h("img", { src: it.thumb, alt: "" }) : h("div", { class: "ph", text: "🏷️" }),
     h("div", { style: "flex:1;min-width:0" }, h("div", { class: "t", text: it.title || "Untitled" }),
-      h("div", { class: "row", style: "margin-top:4px" }, h("span", { class: "p", text: money(it.price_ask) }), h("span", { class: "stamp s-" + it.status, text: it.status })))));
+      h("div", { class: "row", style: "margin-top:4px" }, h("span", { class: "p", text: it.status === "sold" && it.sold_for !== "" && it.sold_for != null ? money(it.sold_for) + (it.paid !== "" && it.paid != null ? ` (${Math.round((Number(it.sold_for) - Number(it.paid)) / Number(it.sold_for) * 100)}%)` : "") : money(it.price_ask) }), h("span", { class: "stamp s-" + it.status, text: it.status }),
+        it.created ? h("span", { class: "hint", style: "margin:0;font-size:12px", text: new Date(it.created).toLocaleDateString() }) : null))));
 }
 function renderItemPicker() {
   const sel = $("rItem"), keep = sel.value; sel.replaceChildren(h("option", { value: "", text: items.length ? "Choose…" : "No saved items — reply will be generic" }));
@@ -648,18 +676,20 @@ Identify what it is (brand, model or line, size, material, rough era) only as fa
 Reply with only one JSON object:
 {"brand": string, "item": string, "size": string, "material": string, "era": string, "resale_low": number, "resale_high": number, "max_buy": number (most to pay and still clear the minimum profit after ~13% fees and shipping supplies if it would ship), "speed": "fast"|"steady"|"slow", "sell_on": string, "verdict": "buy"|"maybe"|"pass", "reason": string (one or two sentences), "inspect": string[] (up to 4), "confidence": "high"|"medium"|"low"}`;
 
-function setTip() { const m = $("sMode").value;
+const sMode = () => (document.querySelector('input[name="sMode"]:checked') || {}).value || "quick";
+function setTip() { const m = sMode();
   $("quickBox").hidden = m !== "quick"; $("videoBox").hidden = m === "quick"; $("finds").hidden = m === "quick";
   $("sTip").textContent = m === "quick" ? "Shoot the brand label or model plate first, then the whole item and any flaws. Works for clothes and hard goods."
   : m === "rack"
   ? "Stand 2–3 ft back, camera at shoulder height and angled along the rack so sleeves and fronts show, not just edges. About one step per second. It flags what to pull; pricing happens after you photograph the tags."
   : "Slow pan, 1–2 seconds per shelf section, labels and price tags in frame."; }
 $("sMode").addEventListener("change", setTip); setTip();
+$("sMode").querySelectorAll(".chip").forEach(c => c.style.cursor = "pointer");
 
 $("scan").onclick = async () => {
   if (!sFile) { $("sNote").textContent = "Choose a video first."; return; }
   const want = Number($("sDepth").value) || 24, minProfit = Number($("sMin").value) || 20, focus = $("sFocus").value.trim().slice(0, 200);
-  const rack = $("sMode").value === "rack";
+  const rack = sMode() === "rack";
   const per = Math.max(1, Math.min(imgCaps ? imgCaps.maxCount : 1, rack ? 3 : 4));
   sCtl = new AbortController(); const signal = sCtl.signal;
   finds = []; $("finds").replaceChildren(); $("scan").disabled = true; $("stopScan").hidden = false; $("sBar").hidden = false;
