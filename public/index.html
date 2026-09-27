@@ -185,6 +185,9 @@ nav button[aria-current=true]{opacity:1;box-shadow:inset 0 -3px 0 var(--red)}
       </div>
     </div>
     <div id="finds"></div>
+    <h2 id="scoutsH">Recent scouts</h2>
+    <p class="hint" id="scoutsHint"></p>
+    <div id="scouts"></div>
   </section>
 
   <!-- NEW ITEM -->
@@ -277,6 +280,10 @@ nav button[aria-current=true]{opacity:1;box-shadow:inset 0 -3px 0 var(--red)}
         <p>Profit = sold for − paid. Margin = profit ÷ sold for. Return on cost = profit ÷ paid. Fees aren't deducted automatically, so enter the amount you actually received if you want net figures.</p>
       </details>
       <details>
+        <summary>What are Recent scouts, and how long are they kept?</summary>
+        <p>Every video scan and photo check is saved as a scout session: the frames, what was flagged, and the numbers. They live under the Scout tab so you can go back to something you skipped in the store. How long they're kept depends on the plan: <b>15 minutes</b> on the free tier, <b>7 days</b> on paid plans. Saving a find to inventory keeps it permanently.</p>
+      </details>
+      <details>
         <summary>Who can see our inventory?</summary>
         <p>Only signed-in family members whose email is on the members list. Items, house rules, the brand watchlist and the Claude API key live in the family's Supabase project. Full-size photos and videos are never stored, only a small thumbnail per item.</p>
       </details>
@@ -305,6 +312,24 @@ nav button[aria-current=true]{opacity:1;box-shadow:inset 0 -3px 0 var(--red)}
       <label class="pulled" style="margin-top:10px"><input type="checkbox" id="brandOnly"> Only seek these brands</label>
       <p class="hint" style="margin:6px 0 0">With this on, video scans report only items that match the list (or show a legible logo that matches). Off, the list is a boost: matches float to the top and everything else still gets judged on its merits.</p>
       <div class="row end"><button class="sm" id="saveBrands">Save watchlist</button></div>
+    </div>
+    <h2>Plan</h2>
+    <div class="tag pad">
+      <p style="margin:0" id="planLine"></p>
+      <div id="planBox" hidden>
+        <p class="hint" id="planHint"></p>
+        <div class="row" style="margin-top:8px">
+          <button class="sm" data-plan="our_key" style="background:var(--ink);color:var(--paper)">Subscribe — we cover the AI</button>
+          <button class="sm" data-plan="own_key">Subscribe — bring your own key</button>
+          <button class="sm" id="portal" hidden>Manage billing</button>
+        </div>
+        <div id="ownKeyBox" hidden>
+          <label for="ownKey">Your Anthropic API key (used only for your account)</label>
+          <input type="password" id="ownKey" placeholder="sk-ant-…" autocomplete="off" style="width:100%;font:inherit;color:var(--ink);background:transparent;border:0;border-bottom:1.5px dashed var(--line);padding:6px 0;outline:none">
+          <div class="row end"><button class="sm" id="saveOwnKey">Save my key</button></div>
+        </div>
+        <div class="note" id="planNote" role="status"></div>
+      </div>
     </div>
     <h2>This phone</h2>
     <div class="tag pad">
@@ -360,8 +385,13 @@ async function copy(text, btn) {
 }
 
 /* ---------- storage: Supabase ---------- */
-const CFG = Object.assign({ SUPABASE_URL: "", SUPABASE_ANON_KEY: "", MODEL_VISION: "claude-sonnet-5", MODEL_QUICK: "claude-haiku-4-5-20251001" }, window.GT_CONFIG || {});
-let sb = null, me = null, items = [], rules = {}, apiKey = "", brands = { list: [], only: false };
+const CFG = Object.assign({ SUPABASE_URL: "", SUPABASE_ANON_KEY: "", MODEL_VISION: "claude-sonnet-5", MODEL_QUICK: "claude-haiku-4-5-20251001", AI_MODE: "direct" }, window.GT_CONFIG || {});
+const PROXY = CFG.AI_MODE === "proxy";           // paid product: metered calls through the Supabase edge function
+let profile = null;                              // proxy mode: { household_id, plan, credits, period_end }
+const hh = () => PROXY && profile ? { household_id: profile.household_id } : {};
+let sb = null, me = null, items = [], rules = {}, apiKey = "", brands = { list: [], only: false }, scouts = [];
+const PLANS = { free: { label: "Free", keep: 15 * 60 * 1000, keepText: "15 minutes" }, paid: { label: "Paid", keep: 7 * 24 * 3600 * 1000, keepText: "7 days" }, family: { label: "Family", keep: 7 * 24 * 3600 * 1000, keepText: "7 days" } };
+let plan = "family";
 const LS = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } },
              set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} } };
 const sync = t => $("sync").textContent = t;
@@ -369,7 +399,7 @@ async function saveItem(it) {
   it.updated = Date.now();
   const i = items.findIndex(x => x.id === it.id); if (i >= 0) items[i] = it; else items.unshift(it);
   renderAll();
-  const { error } = await sb.from("items").upsert({ id: it.id, data: it, status: it.status || "draft", updated_by: me && me.email, updated_at: new Date().toISOString() });
+  const { error } = await sb.from("items").upsert(Object.assign({ id: it.id, data: it, status: it.status || "draft", updated_by: me && me.email, updated_at: new Date().toISOString() }, hh()));
   sync(error ? "save failed" : "synced"); if (error) console.error(error);
 }
 async function removeItem(id) {
@@ -378,7 +408,7 @@ async function removeItem(id) {
 }
 async function saveRules() {
   rules = { area: $("ruArea").value.trim(), pay: $("ruPay").value.trim(), hold: $("ruHold").value.trim(), tone: $("ruTone").value.trim() };
-  const { error } = await sb.from("settings").upsert({ key: "rules", value: rules });
+  const { error } = await sb.from("settings").upsert(Object.assign({ key: "rules", value: rules }, hh()), PROXY ? { onConflict: "household_id,key" } : undefined);
   const b = $("saveRules"); b.textContent = error ? "Couldn't save" : "Saved ✓"; setTimeout(() => b.textContent = "Save rules", 1400);
 }
 function fillRules() { $("ruArea").value = rules.area || ""; $("ruPay").value = rules.pay || ""; $("ruHold").value = rules.hold || ""; $("ruTone").value = rules.tone || ""; }
@@ -423,7 +453,9 @@ function bumpUsage(u) { if (!u) return; const t = LS.get("gt.usage", { in: 0, ou
   t.in += u.input_tokens || 0; t.out += u.output_tokens || 0; t.calls++; LS.set("gt.usage", t); showUsage(); }
 function showUsage() { const t = LS.get("gt.usage", { in: 0, out: 0, calls: 0 });
   $("usage").textContent = `${t.calls} Claude calls from this phone · ${t.in.toLocaleString()} tokens in · ${t.out.toLocaleString()} out`; }
+Object.assign(ERR, { no_credits: "You're out of credits. Upgrade in Settings (⚙︎) to keep going.", no_plan: "Your plan doesn't include this. Upgrade in Settings (⚙︎).", proxy: "The Thrift Me server had a problem. Try again in a moment." });
 const sample = { async json(prompt, { images = [], modelTier, signal } = {}) {
+  if (PROXY) return proxyJSON(prompt, images, modelTier, signal);
   if (!apiKey) throw { code: "no_key" };
   const content = [];
   for (const f of images) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: await toB64(f) } });
@@ -442,6 +474,23 @@ const sample = { async json(prompt, { images = [], modelTier, signal } = {}) {
   if (!text) throw { code: "empty_completion" };
   return parseJSON(text);
 } };
+async function proxyJSON(prompt, images, modelTier, signal) {
+  const content = [];
+  for (const f of images) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: await toB64(f) } });
+  content.push({ type: "text", text: prompt });
+  const { data: { session } } = await sb.auth.getSession(); if (!session) throw { code: "session_expired" };
+  let res;
+  try { res = await fetch(CFG.SUPABASE_URL + "/functions/v1/claude", { method: "POST", signal,
+    headers: { "content-type": "application/json", authorization: "Bearer " + session.access_token, apikey: CFG.SUPABASE_ANON_KEY },
+    body: JSON.stringify({ tier: modelTier === "quick" ? "quick" : "vision", content }) });
+  } catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "network" }; }
+  const b = await res.json().catch(() => ({}));
+  if (b.credits != null && profile) { profile.credits = b.credits; showPlan(); }
+  if (!res.ok) throw { code: b.code || (res.status === 402 ? "no_credits" : res.status === 401 ? "session_expired" : res.status === 429 ? "rate_limited" : "proxy"), message: b.error || "" };
+  bumpUsage(b.usage);
+  if (!b.text) throw { code: "empty_completion" };
+  return parseJSON(b.text);
+}
 function aiOn() { dead = false; for (const id of ["identify", "draftReply", "scan", "qCheck"]) $(id).disabled = false; for (const id of ["newNote", "rNote", "sNote"]) $(id).textContent = ""; }
 function aiOff(msg) { for (const id of ["identify", "draftReply", "scan", "qCheck"]) $(id).disabled = true; for (const id of ["newNote", "rNote", "sNote"]) $(id).textContent = msg; }
 
@@ -622,7 +671,7 @@ function showDraft(it, isNew) {
       h("button", { class: "sm", text: "Copy tags", onclick: e => copy(it.tags.join(", "), e.target) })),
     sitesBlock(it, isNew, () => read()),
     h("div", { class: "row end", style: "margin-top:18px" },
-      !isNew ? h("button", { class: "sm red", text: "Delete", onclick: () => { if (confirm("Delete this item?")) removeItem(it.id); } }) : null,
+      !isNew ? h("button", { class: "sm red", text: "Delete", onclick: async () => { if (confirm("Delete this item?")) { await removeItem(it.id); renderList(); go("items"); } } }) : null,
       !isNew ? h("button", { class: "sm", text: "Reply to a buyer", onclick: () => { go("reply"); $("rItem").value = it.id; } }) : null,
       !isNew ? h("button", { class: "sm", text: "Back", onclick: renderList }) : null,
       h("button", { class: "sm", style: "background:var(--ink);color:var(--paper)", text: isNew ? "Save to inventory" : "Save", onclick: async () => {
@@ -818,7 +867,10 @@ $("scan").onclick = async () => {
     else if (c === "video") $("sNote").textContent = "This browser couldn't read that video. Try re-recording in 'Most Compatible' (H.264) format, or trim it to under a few minutes.";
     else if (c === "not_granted" || c === "sampling_disabled" || c === "not_declared") { dead = true; aiOff(errCopy(e)); }
     else $("sNote").textContent = errCopy(e) + (finds.length ? " Showing what was found before that." : "");
-  } finally { $("stopScan").hidden = true; $("sBar").hidden = true; bar(0); if (sample && !dead && imgCaps) $("scan").disabled = false; }
+  } finally { $("stopScan").hidden = true; $("sBar").hidden = true; bar(0); if (sample && !dead && imgCaps) $("scan").disabled = false;
+    if (finds.length) { const snaps = []; for (const x of finds) snaps.push(await snapFind(x));
+      archiveScout(rack ? "rack" : "shelf", snaps, `${rack ? "Rack" : "Shelf"} scan · ${sFile ? sFile.name.replace(/\.[^.]+$/, "") : ""}`.trim()); }
+  }
 };
 
 function addFind(x) {
@@ -924,17 +976,102 @@ $("qCheck").onclick = async () => {
     const d = await sample.json(QUICK_PROMPT($("qTag").value, Number($("qMin").value) || 20), { images: qFiles });
     $("qNote").textContent = "";
     $("qOut").replaceChildren(h("div", { class: "review" }, ...verdictNodes(d, qFiles, $("qTag").value, "Photographed item")));
+    const nm = [d.brand, d.item].map(z => String(z || "").trim()).filter(Boolean).join(" ") || "Photographed item";
+    archiveScout("quick", [{ kind: "quick", item: nm, conf: String(d.confidence || ""), thumb: await makeThumb(qFiles[0]).catch(() => ""), low: Number(d.resale_low) || 0, high: Number(d.resale_high) || 0,
+      maxBuy: Number(d.max_buy) || 0, speed: d.speed, sellOn: String(d.sell_on || ""), verdict: d.verdict, reason: String(d.reason || ""), tag: $("qTag").value === "" ? "" : Number($("qTag").value) }], "Photo check · " + nm);
   } catch (e) {
     if (e && (e.code === "not_granted" || e.code === "sampling_disabled")) { dead = true; aiOff(errCopy(e)); }
     $("qNote").textContent = errCopy(e);
   } finally { if (!dead) $("qCheck").disabled = false; }
 };
 
+/* ---------- recent scouts (archive) ---------- */
+function showPlan() {
+  if (!PROXY) { $("planLine").textContent = `${PLANS[plan].label} plan · recent scouts kept ${PLANS[plan].keepText}`; return; }
+  if (!profile) return;
+  const p = profile.plan, names = { free: "Free trial", our_key: "Thrift Me Plus (AI included)", own_key: "Thrift Me (your own key)", family: "Family" };
+  plan = p === "free" ? "free" : "paid";
+  $("planLine").textContent = `${names[p] || p} · ${p === "own_key" || p === "family" ? "unlimited" : `${profile.credits} credits left`}${profile.period_end && p !== "free" ? " · renews " + new Date(profile.period_end).toLocaleDateString() : ""} · scouts kept ${PLANS[plan].keepText}`;
+  $("planBox").hidden = false; $("portal").hidden = !profile.stripe_customer;
+  $("planHint").textContent = p === "free" ? "A credit is about a cent of AI work: a video scan runs 20–30 credits, a photo check 3–5, a listing 2–4, buyer replies are free. When the trial credits run out, pick a plan."
+    : p === "our_key" ? "Credits reset each month. Buyer replies never cost credits." : "Unlimited use on your own Anthropic key; you pay Anthropic directly for usage.";
+  $("ownKeyBox").hidden = p !== "own_key"; document.querySelectorAll("[data-plan]").forEach(b => b.hidden = b.dataset.plan === p);
+}
+async function billing(action, extra) {
+  const { data: { session } } = await sb.auth.getSession();
+  const r = await fetch(CFG.SUPABASE_URL + "/functions/v1/billing", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + session.access_token, apikey: CFG.SUPABASE_ANON_KEY },
+    body: JSON.stringify(Object.assign({ action, return_url: location.href.split("#")[0] }, extra)) });
+  const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.error || "billing error"); return b;
+}
+document.querySelectorAll("[data-plan]").forEach(b => b.onclick = async () => { $("planNote").textContent = "Opening checkout…";
+  try { const { url } = await billing("checkout", { plan: b.dataset.plan }); location.href = url; } catch (e) { $("planNote").textContent = e.message; } });
+$("portal").onclick = async () => { try { const { url } = await billing("portal"); location.href = url; } catch (e) { $("planNote").textContent = e.message; } };
+$("saveOwnKey").onclick = async () => { const k = $("ownKey").value.trim(); if (!/^sk-ant-/.test(k)) { $("planNote").textContent = "That doesn't look like an Anthropic key."; return; }
+  try { await billing("set_key", { key: k }); $("ownKey").value = ""; $("planNote").textContent = "Saved. Your calls now use your key."; } catch (e) { $("planNote").textContent = e.message; } };
+async function snapFind(x) {
+  const base = { item: x.item, where: x.where || "", conf: x.conf || "", watch: !!x.watch, t: x.f ? x.f.t : null, thumb: x.f ? await makeThumb(x.f.blob).catch(() => "") : (x.thumb || "") };
+  if (x.kind === "rack") return Object.assign(base, { kind: "rack", tier: x.tier, cues: x.cues, likely: x.likely, tagCheck: x.tagCheck });
+  return Object.assign(base, { kind: "shelf", low: x.low, high: x.high, maxBuy: x.maxBuy, speed: x.speed, sellOn: x.sellOn, check: x.check, tag: x.tag });
+}
+async function archiveScout(mode, entries, label) {
+  if (!entries.length) return;
+  const now = Date.now();
+  const rec = { id: uid(), mode, label, created: now, expires: now + PLANS[plan].keep, by: me && me.email, finds: entries };
+  scouts.unshift(rec); renderScouts();
+  const { error } = await sb.from("scouts").insert(Object.assign({ id: rec.id, data: rec, expires_at: new Date(rec.expires).toISOString() }, hh()));
+  if (error) { console.error(error); $("scoutsHint").textContent = "Couldn't save this scout to the shared archive (kept on this phone until you leave)."; }
+}
+async function purgeScouts() {
+  const now = Date.now(), gone = scouts.filter(r => r.expires <= now);
+  scouts = scouts.filter(r => r.expires > now);
+  if (gone.length) sb.from("scouts").delete().in("id", gone.map(r => r.id)).then(() => {});
+}
+const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString(); };
+const left = t => { const m = Math.round((t - Date.now()) / 60000); return m < 60 ? `${Math.max(0, m)} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
+function renderScouts() {
+  purgeScouts();
+  const box = $("scouts"); box.replaceChildren();
+  $("scoutsHint").textContent = scouts.length ? `Kept ${PLANS[plan].keepText} on the ${PLANS[plan].label} plan. Save a find to inventory to keep it for good.` : `Nothing yet. Scans and photo checks show up here for ${PLANS[plan].keepText}.`;
+  for (const r of scouts) {
+    const body = h("div", { hidden: "" });
+    const head = h("div", { class: "item", role: "button", tabindex: 0, onclick: () => { body.hidden = !body.hidden; if (!body.hidden && !body.childElementCount) body.append(...r.finds.map(f => scoutFindCard(f, r))); } },
+      r.finds[0] && r.finds[0].thumb ? h("img", { src: r.finds[0].thumb, alt: "" }) : h("div", { class: "ph", text: r.mode === "quick" ? "📷" : "🎥" }),
+      h("div", { style: "flex:1;min-width:0" }, h("div", { class: "t", text: r.label }),
+        h("div", { class: "hint", style: "margin:2px 0 0;font-size:12px", text: `${ago(r.created)} · ${r.finds.length} find${r.finds.length === 1 ? "" : "s"} · expires in ${left(r.expires)}` })));
+    box.append(h("div", { class: "tag pad" }, head, body));
+  }
+}
+function scoutFindCard(f, r) {
+  const save = h("button", { class: "sm", text: "Save to inventory", onclick: async e => {
+    e.target.disabled = true; e.target.textContent = "Saved ✓";
+    await saveItem({ id: uid(), status: f.kind === "quick" ? "draft" : "scouted", thumb: f.thumb || "", created: Date.now(), notes: `From scout "${r.label}" (${new Date(r.created).toLocaleString()}).`,
+      title: f.item, category: f.kind === "rack" ? "Clothing" : "", condition: "Used - Good", identified_as: f.item, id_confidence: f.conf || "", description: "",
+      price_ask: Math.round(f.high || 0) || "", price_floor: Math.round(f.low || 0) || "", price_quick: Math.round((f.low || 0) * .85) || "", tags: [],
+      checks: [f.check, f.tagCheck, f.maxBuy ? `Pay at most $${f.maxBuy}` : ""].filter(Boolean), paid: f.tag ?? "" });
+  } });
+  const nums = f.kind === "rack" ? null : h("div", { class: "nums" },
+    h("div", {}, h("small", { text: "Resells for" }), `${money(f.low)}–${money(f.high)}`),
+    h("div", { style: "color:var(--red)" }, h("small", { text: "Pay at most" }), money(f.maxBuy)),
+    f.verdict ? h("div", {}, h("small", { text: "Call" }), String(f.verdict)) : null);
+  return h("div", { class: "review" },
+    h("div", { class: "row", style: "align-items:flex-start" },
+      f.thumb ? h("img", { src: f.thumb, alt: "", style: "width:56px;height:56px;object-fit:cover;border:1.5px solid var(--ink)" }) : null,
+      h("div", { style: "flex:1;min-width:0" },
+        h("div", { class: "row" }, h("span", { style: "font-weight:600;flex:1", text: f.item }), f.watch ? h("span", { class: "stamp s-buy", text: "watchlist" }) : null,
+          f.tier ? h("span", { class: "stamp s-" + f.tier, text: f.tier === "strong" ? "pull" : "worth a look" }) : null, f.speed ? h("span", { class: "stamp s-" + f.speed, text: f.speed }) : null),
+        h("p", { class: "hint", style: "margin:2px 0", text: [f.t != null ? mmss(f.t) : "", f.where, f.conf ? f.conf + " confidence" : ""].filter(Boolean).join(" · ") }),
+        f.cues ? h("p", { style: "margin:2px 0;font-size:14px", text: "Why: " + f.cues }) : null,
+        f.reason ? h("p", { style: "margin:2px 0;font-size:14px", text: f.reason }) : null,
+        nums)),
+    h("div", { class: "row end" }, save));
+}
+
 /* ---------- nav ---------- */
 function go(v) {
   for (const s of ["scout", "new", "items", "reply", "set", "info"]) $("v-" + s).hidden = s !== v;
   document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-current", b.dataset.v === v));
   if (v === "items") renderList();
+  if (v === "scout" && sb) renderScouts();
   window.scrollTo(0, 0);
 }
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => go(b.dataset.v));
@@ -949,13 +1086,21 @@ function applyItemChange(p) {
 function applySetting(row) {
   if (!row) return;
   if (row.key === "rules") { rules = row.value || {}; fillRules(); }
+  if (row.key === "plan") { plan = PLANS[row.value && row.value.tier] ? row.value.tier : "family"; showPlan(); }
   if (row.key === "brands") { brands = Object.assign({ list: [], only: false }, row.value || {}); $("brandList").value = brands.list.join("\n"); $("brandOnly").checked = !!brands.only; }
   if (row.key === "anthropic_key") { apiKey = (row.value && row.value.key) || ""; if (apiKey) aiOn(); else aiOff(ERR.no_key); }
 }
 let channel = null;
 async function enter(session) {
   me = session.user; $("whoami").textContent = "Signed in as " + me.email; showUsage();
-  const m = await sb.from("members").select("email").limit(1);
+  if (PROXY) {
+    const p = await sb.from("profiles").select("household_id,plan,credits,period_end,stripe_customer").eq("user_id", me.id).maybeSingle();
+    if (p.error || !p.data) { $("authHint").textContent = "Couldn't load your account: " + (p.error ? p.error.message : "no profile yet. Try signing in again."); return; }
+    profile = p.data;
+    document.querySelector("#v-set > h2").hidden = true; $("setKey").closest(".tag").hidden = true;
+    sb.channel("gt-profile").on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: "user_id=eq." + me.id }, x => { profile = Object.assign(profile, x.new); showPlan(); }).subscribe();
+  }
+  const m = PROXY ? { data: [1] } : await sb.from("members").select("email").limit(1);
   if (m.error || !m.data.length) {
     $("authHint").textContent = m.error ? "Couldn't reach the database: " + m.error.message
       : `${me.email} is signed in but isn't on the family list yet. Ask Doc to add this email to the members table, then reopen the app.`;
@@ -966,8 +1111,10 @@ async function enter(session) {
   const [a, b] = await Promise.all([sb.from("items").select("data").order("created_at", { ascending: false }), sb.from("settings").select("key,value")]);
   if (a.error || b.error) { sync("load failed"); return; }
   items = a.data.map(r => r.data).filter(Boolean); renderAll();
-  aiOff(ERR.no_key); b.data.forEach(applySetting); sync("synced");
-  if (!apiKey) go("set");
+  aiOff(ERR.no_key); b.data.forEach(applySetting); if (PROXY) aiOn(); showPlan(); sync("synced");
+  sb.from("scouts").select("data").order("created_at", { ascending: false }).limit(50).then(r => { if (!r.error) { scouts = r.data.map(x => x.data).filter(Boolean); renderScouts(); } });
+  setInterval(renderScouts, 60000);
+  if (!apiKey && !PROXY) go("set");
   if (channel) sb.removeChannel(channel);
   channel = sb.channel("gt-sync")
     .on("postgres_changes", { event: "*", schema: "public", table: "items" }, applyItemChange)
@@ -988,7 +1135,7 @@ $("saveKey").onclick = async () => {
 $("saveBrands").onclick = async () => {
   const list = [...new Set($("brandList").value.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean))].slice(0, 60);
   const b = { list, only: $("brandOnly").checked && list.length > 0 };
-  const { error } = await sb.from("settings").upsert({ key: "brands", value: b });
+  const { error } = await sb.from("settings").upsert(Object.assign({ key: "brands", value: b }, hh()), PROXY ? { onConflict: "household_id,key" } : undefined);
   const btn = $("saveBrands"); btn.textContent = error ? "Couldn't save" : "Saved ✓"; setTimeout(() => btn.textContent = "Save watchlist", 1400);
   if (!error) { brands = b; $("brandOnly").checked = b.only; }
 };
@@ -996,6 +1143,7 @@ $("signOut").onclick = () => sb.auth.signOut().then(() => location.reload());
 
 (async () => {
   $("dropS").textContent = `front, back, label/model number, any flaws · up to ${imgCaps.maxCount}`;
+  document.querySelector("#v-set > p.hint").hidden = PROXY;
   if (!CFG.SUPABASE_URL || !CFG.SUPABASE_ANON_KEY || !window.supabase) {
     $("authHint").textContent = "Setup needed: put your Supabase URL and anon key in config.js, then redeploy. See README.md.";
     for (const id of ["auEmail", "auPass", "auUp", "auIn"]) $(id).disabled = true; sync("not configured"); return;
