@@ -53,7 +53,9 @@ input[type=text],input[type=number],textarea,select{width:100%;font:inherit;colo
   border:0;border-bottom:1.5px dashed var(--line);padding:6px 0;border-radius:0;outline:none}
 textarea{resize:vertical;min-height:70px;border:1.5px dashed var(--line);padding:8px}
 input:focus,textarea:focus,select:focus{border-color:var(--red)}
-select{appearance:none}
+select{appearance:none;-webkit-appearance:none;padding-right:28px;cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'><path d='M1 1l6 6 6-6' fill='none' stroke='%23b8236b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat:no-repeat;background-position:right 4px center}
 button{font:600 15px/1 "Lora",Georgia,serif;color:var(--ink);background:transparent;
   border:1.5px solid var(--ink);padding:12px 16px;cursor:pointer;border-radius:0}
 button.go{background:var(--ink);color:var(--paper);width:100%;padding:15px}
@@ -640,7 +642,10 @@ function showDraft(it, isNew) {
     if (sf && status.value !== "sold") { status.value = "sold"; }
   };
   paid.addEventListener("input", calcMargin); soldFor.addEventListener("input", calcMargin);
-  const status = h("select", { "aria-label": "Status" }, ["scouted", "draft", "listed", "pending", "sold"].map(s => h("option", { text: s, selected: s === it.status })));
+  const statusName = "st-" + it.id;
+  const statusBox = h("div", { class: "chips", role: "radiogroup", "aria-label": "Status" }, ["scouted", "draft", "listed", "pending", "sold"].map(s =>
+    h("label", { class: "chip" }, h("input", { type: "radio", name: statusName, value: s, checked: s === it.status ? "" : null }), h("span", { class: "stamp s-" + s, style: "transform:none", text: s }))));
+  const status = { get value() { const r = statusBox.querySelector("input:checked"); return r ? r.value : it.status; }, set value(v) { const r = statusBox.querySelector(`input[value="${v}"]`); if (r) r.checked = true; } };
   const read = () => Object.assign(it, { title: title.value.trim(), category: cat.value.trim(), condition: cond.value, description: desc.value.trim(),
     price_ask: pa.value === "" ? "" : Number(pa.value), price_floor: pf.value === "" ? "" : Number(pf.value), price_quick: pq.value === "" ? "" : Number(pq.value), status: status.value,
     paid: paid.value === "" ? "" : Number(paid.value), sold_for: soldFor.value === "" ? "" : Number(soldFor.value) });
@@ -664,7 +669,7 @@ function showDraft(it, isNew) {
       h("div", { class: "ask" }, h("span", { text: "Sold for" }), soldFor),
       h("div", {}, h("span", { text: "Added" }), h("span", { class: "mono", style: "display:block;font-size:14px;padding:6px 0;font-weight:600", text: it.created ? new Date(it.created).toLocaleDateString() : "—" }))),
     marginOut,
-    f("Status", status),
+    f("Status", statusBox),
     h("div", { class: "row end" },
       h("button", { class: "sm", text: "Copy title", onclick: e => copy(title.value, e.target) }),
       h("button", { class: "sm", text: "Copy description", onclick: e => copy(desc.value, e.target) }),
